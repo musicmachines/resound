@@ -17,7 +17,7 @@ export function wireTransport(
       await audioCtx.resume();
     }
     resound.play();
-    scheduler.start();
+    scheduler.start(audioCtx);
   });
   controls.stopBtn.addEventListener("click", () => {
     scheduler.stop();

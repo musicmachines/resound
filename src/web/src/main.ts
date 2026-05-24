@@ -4,6 +4,7 @@ import { InternalClock } from "./audio/clock";
 import { Scheduler } from "./audio/scheduler";
 import { renderGrid, wireGridClicks } from "./ui/grid";
 import { wireTransport } from "./ui/transport";
+import { wireMasterFader, wireTrackFaders } from "./ui/mixer";
 
 async function boot(): Promise<void> {
   await init();
@@ -17,6 +18,7 @@ async function boot(): Promise<void> {
   if (!grid) throw new Error("grid element missing");
   renderGrid(grid, resound);
   wireGridClicks(grid, resound);
+  wireTrackFaders(grid, resound, engine);
 
   const clock = new InternalClock(resound);
   const scheduler = new Scheduler(resound, engine, clock);
@@ -24,13 +26,15 @@ async function boot(): Promise<void> {
   const playBtn = document.getElementById("play") as HTMLButtonElement | null;
   const stopBtn = document.getElementById("stop") as HTMLButtonElement | null;
   if (!playBtn || !stopBtn) throw new Error("transport buttons missing");
-
   wireTransport(resound, scheduler, engine.audioCtx, { playBtn, stopBtn });
 
-  const bpmInput = document.getElementById("bpm") as HTMLInputElement | null;
   const masterInput = document.getElementById("master") as HTMLInputElement | null;
+  if (!masterInput) throw new Error("master fader missing");
+  masterInput.value = String(resound.master_level());
+  wireMasterFader(masterInput, resound, engine);
+
+  const bpmInput = document.getElementById("bpm") as HTMLInputElement | null;
   if (bpmInput) bpmInput.value = String(resound.bpm());
-  if (masterInput) masterInput.value = String(resound.master_level());
 }
 
 boot().catch((err) => {
