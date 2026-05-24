@@ -32,3 +32,16 @@ export function renderGrid(root: HTMLElement, resound: Resound): void {
     }
   }
 }
+
+export function wireGridClicks(root: HTMLElement, resound: Resound): void {
+  root.addEventListener("click", (ev) => {
+    const target = ev.target;
+    if (!(target instanceof HTMLButtonElement) || !target.classList.contains("cell")) {
+      return;
+    }
+    const voice = Number(target.dataset.voice);
+    const step = Number(target.dataset.step);
+    resound.toggle_step(voice, step);
+    target.classList.toggle("on", resound.is_step_on(voice, step));
+  });
+}

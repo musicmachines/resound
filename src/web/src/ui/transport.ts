@@ -1,3 +1,26 @@
-// Slice 2: play/stop wiring. Empty in slice 1.
+import type { Resound } from "../../wasm/resound";
+import type { Scheduler } from "../audio/scheduler";
 
-export {};
+export interface TransportControls {
+  playBtn: HTMLButtonElement;
+  stopBtn: HTMLButtonElement;
+}
+
+export function wireTransport(
+  resound: Resound,
+  scheduler: Scheduler,
+  audioCtx: AudioContext,
+  controls: TransportControls,
+): void {
+  controls.playBtn.addEventListener("click", async () => {
+    if (audioCtx.state === "suspended") {
+      await audioCtx.resume();
+    }
+    resound.play();
+    scheduler.start();
+  });
+  controls.stopBtn.addEventListener("click", () => {
+    scheduler.stop();
+    resound.stop();
+  });
+}

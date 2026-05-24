@@ -1,3 +1,16 @@
-// Slice 2: per-voice triggering. Slice 3: choke. Empty in slice 1.
+import type { AudioEngine } from "./engine";
 
-export {};
+export function triggerVoice(
+  engine: AudioEngine,
+  voice: number,
+  audioTime: number,
+): void {
+  const buffer = engine.buffers[voice];
+  if (!buffer) return;
+
+  const src = engine.audioCtx.createBufferSource();
+  src.buffer = buffer;
+  src.connect(engine.trackGains[voice]);
+  src.start(audioTime);
+  src.onended = () => src.disconnect();
+}
