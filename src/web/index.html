@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Resound</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <main id="app">
+      <header class="transport">
+        <button id="play" type="button">▶ Play</button>
+        <button id="stop" type="button">■ Stop</button>
+        <label class="bpm">
+          BPM
+          <input id="bpm" type="number" min="40" max="240" step="1" value="120" />
+        </label>
+        <label class="master">
+          Master
+          <input id="master" type="range" min="0" max="1" step="0.01" value="0.8" />
+        </label>
+      </header>
+      <section id="grid" class="grid" aria-label="Pattern grid"></section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
