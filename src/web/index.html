@@ -9,14 +9,18 @@
   <body>
     <main id="app">
       <header class="transport">
-        <button id="play" type="button">▶ Play</button>
-        <button id="stop" type="button">■ Stop</button>
-        <label class="bpm">
-          BPM
+        <div class="transport-buttons">
+          <button id="play" type="button" class="transport-btn">▶ Play</button>
+          <button id="stop" type="button" class="transport-btn">■ Stop</button>
+        </div>
+        <label class="control bpm">
+          <span class="control-label">BPM</span>
+          <button id="bpm-down" type="button" class="step-btn" aria-label="Decrease BPM">−</button>
           <input id="bpm" type="number" min="40" max="240" step="1" value="120" />
+          <button id="bpm-up" type="button" class="step-btn" aria-label="Increase BPM">+</button>
         </label>
-        <label class="master">
-          Master
+        <label class="control master">
+          <span class="control-label">Master</span>
           <input id="master" type="range" min="0" max="1" step="0.01" value="0.8" />
         </label>
       </header>

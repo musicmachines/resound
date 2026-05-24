@@ -36,7 +36,7 @@ export class InternalClock implements ClockSource {
     this.audioCtx = audioCtx;
     this.transportStartTime = audioCtx.currentTime;
     this.nextScheduledStep = 0;
-    this.tick(); // schedule first horizon immediately, then on interval
+    this.tick();
     this.intervalId = setInterval(() => this.tick(), LOOKAHEAD_MS);
   }
 
@@ -48,12 +48,26 @@ export class InternalClock implements ClockSource {
     this.audioCtx = null;
   }
 
+  // Update BPM and re-anchor transportStartTime so the next unscheduled step
+  // still lands at the audio time it would have under the old BPM. Already-
+  // scheduled events fire at their committed times per spec §9.
+  setBpm(newBpm: number): void {
+    if (!this.audioCtx) {
+      this.resound.set_bpm(newBpm);
+      return;
+    }
+    const oldDt = stepDuration(this.resound.bpm());
+    const nextStepOldTime = this.transportStartTime + this.nextScheduledStep * oldDt;
+    this.resound.set_bpm(newBpm);
+    const newDt = stepDuration(this.resound.bpm());
+    this.transportStartTime = nextStepOldTime - this.nextScheduledStep * newDt;
+  }
+
   private tick(): void {
     if (!this.audioCtx || !this.handler) return;
     const bpm = this.resound.bpm();
     const dt = stepDuration(bpm);
     const deadline = this.audioCtx.currentTime + SCHEDULE_AHEAD;
-    // largest step whose start time < deadline → horizon (exclusive upper bound)
     const elapsed = deadline - this.transportStartTime;
     const horizonStep = Math.max(0, Math.floor(elapsed / dt) + 1);
 

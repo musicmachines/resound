@@ -1,22 +1,26 @@
 :root {
   color-scheme: dark;
-  --bg: #1a1a1a;
-  --panel: #232323;
-  --cell: #2c2c2c;
+  --bg: #161616;
+  --panel: #1f1f1f;
+  --cell: #2a2a2a;
+  --cell-hover: #353535;
   --cell-on: #d97706;
+  --cell-on-hover: #e88c14;
   --text: #e5e5e5;
-  --muted: #888;
+  --muted: #909090;
   --accent: #f59e0b;
-  --border: #333;
+  --border: #2e2e2e;
+  --playhead: rgba(245, 158, 11, 0.18);
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -24,32 +28,47 @@ body {
 
 #app {
   max-width: 1100px;
+  min-width: 1024px;
   margin: 0 auto;
   padding: 24px;
 }
 
+/* Transport bar ----------------------------------------------------------- */
+
 .transport {
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 16px;
+  gap: 32px;
+  padding: 16px 20px;
   background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 8px;
   margin-bottom: 16px;
 }
 
-.transport button {
+.transport-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.transport-btn {
   background: var(--cell);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 8px 16px;
+  padding: 8px 18px;
   font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
+  min-width: 88px;
 }
 
-.transport .bpm,
-.transport .master {
+.transport-btn:hover {
+  background: var(--cell-hover);
+  border-color: var(--accent);
+}
+
+.control {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -57,22 +76,58 @@ body {
   color: var(--muted);
 }
 
-.transport input[type="number"] {
+.control-label {
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+.step-btn {
+  background: var(--cell);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.step-btn:hover {
+  background: var(--cell-hover);
+}
+
+.bpm input[type="number"] {
   width: 64px;
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 3px;
   padding: 4px 6px;
   font-size: 14px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
-.transport input[type="range"] {
-  width: 160px;
+.bpm input::-webkit-outer-spin-button,
+.bpm input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
+
+.master input[type="range"] {
+  width: 180px;
+  accent-color: var(--accent);
+}
+
+/* Grid -------------------------------------------------------------------- */
 
 .grid {
+  position: relative;
   background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
   display: grid;
@@ -89,6 +144,7 @@ body {
 
 .row-fader {
   width: 100%;
+  accent-color: var(--accent);
 }
 
 .cell {
@@ -98,10 +154,11 @@ body {
   border-radius: 3px;
   padding: 0;
   cursor: pointer;
+  transition: background-color 80ms ease;
 }
 
 .cell:hover {
-  background: #383838;
+  background: var(--cell-hover);
 }
 
 .cell.on {
@@ -109,6 +166,23 @@ body {
   border-color: var(--accent);
 }
 
+.cell.on:hover {
+  background: var(--cell-on-hover);
+}
+
+/* Beat boundary: subtle left border on the first cell of beats 2/3/4. */
 .cell.beat-start {
-  margin-left: 4px;
+  border-left: 2px solid var(--muted);
+}
+
+/* Playhead overlay -------------------------------------------------------- */
+
+.playhead {
+  background: var(--playhead);
+  border-radius: 3px;
+  pointer-events: none;
+  align-self: stretch;
+  justify-self: stretch;
+  height: 100%;
+  width: 100%;
 }
