@@ -4,48 +4,23 @@ import type { UndoStack } from "../state/undo";
 export const NUM_VOICES = 8;
 export const STEPS = 16;
 
-export type SelectedStep = { voice: number; step: number } | null;
-export type SelectionListener = (sel: SelectedStep) => void;
-
-const VELOCITY_DRAG_RANGE = 80; // pixels of vertical drag = full 0..1 sweep
-const PITCH_DRAG_RANGE = 24; // pixels per semitone
-
+/**
+ * Binary on/off grid. v4 dropped per-step velocity/pitch + inspector.
+ * Track row layout (per row): header (name + browse) | level | tuning | 16 cells
+ */
 export class Grid {
-  private root: HTMLElement;
-  private resound: Resound;
-  private undo: UndoStack;
-  private selected: SelectedStep = null;
-  private listeners: Set<SelectionListener> = new Set();
-
-  constructor(root: HTMLElement, resound: Resound, undo: UndoStack) {
-    this.root = root;
-    this.resound = resound;
-    this.undo = undo;
-  }
-
-  onSelectionChange(listener: SelectionListener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
-
-  selection(): SelectedStep {
-    return this.selected;
-  }
-
-  setSelection(sel: SelectedStep): void {
-    if (sameSelection(sel, this.selected)) return;
-    const prior = this.selected;
-    this.selected = sel;
-    if (prior) this.updateCellSelectedClass(prior.voice, prior.step);
-    if (sel) this.updateCellSelectedClass(sel.voice, sel.step);
-    for (const l of this.listeners) l(sel);
-  }
+  constructor(
+    private readonly root: HTMLElement,
+    private readonly resound: Resound,
+    private readonly undo: UndoStack,
+  ) {}
 
   render(): void {
     this.root.innerHTML = "";
     for (let v = 0; v < NUM_VOICES; v++) {
       this.renderTrackHeader(v);
-      this.renderTrackFader(v);
+      this.renderTrackLevel(v);
+      this.renderTrackTuning(v);
       for (let s = 0; s < STEPS; s++) {
         this.renderCell(v, s);
       }
@@ -54,8 +29,7 @@ export class Grid {
 
   refreshCell(voice: number, step: number): void {
     const cell = this.cellEl(voice, step);
-    if (!cell) return;
-    applyCellState(cell, this.resound, voice, step, sameSelection(this.selected, { voice, step }));
+    if (cell) cell.classList.toggle("on", this.resound.is_step_on(voice, step));
   }
 
   refreshAllCells(): void {
@@ -68,13 +42,23 @@ export class Grid {
 
   refreshTrackHeader(voice: number): void {
     const header = this.root.querySelector<HTMLElement>(`.row-header[data-voice="${voice}"]`);
-    if (!header) return;
-    this.populateTrackHeader(header, voice);
+    if (header) this.populateTrackHeader(header, voice);
   }
 
-  refreshTrackFader(voice: number): void {
+  refreshTrackLevel(voice: number): void {
     const fader = this.root.querySelector<HTMLInputElement>(`.row-fader[data-voice="${voice}"]`);
     if (fader) fader.value = String(this.resound.track_level(voice));
+  }
+
+  refreshTrackTuning(voice: number): void {
+    const tuner = this.root.querySelector<HTMLInputElement>(`.row-tuner[data-voice="${voice}"]`);
+    if (tuner) {
+      tuner.value = String(this.resound.track_tuning(voice));
+      const readout = this.root.querySelector<HTMLElement>(
+        `.row-tuner-readout[data-voice="${voice}"]`,
+      );
+      if (readout) readout.textContent = formatSemis(this.resound.track_tuning(voice));
+    }
   }
 
   // ---- internal -------------------------------------------------------
@@ -83,12 +67,6 @@ export class Grid {
     return this.root.querySelector<HTMLButtonElement>(
       `.cell[data-voice="${voice}"][data-step="${step}"]`,
     );
-  }
-
-  private updateCellSelectedClass(voice: number, step: number): void {
-    const cell = this.cellEl(voice, step);
-    if (!cell) return;
-    cell.classList.toggle("selected", sameSelection(this.selected, { voice, step }));
   }
 
   private renderTrackHeader(voice: number): void {
@@ -118,7 +96,7 @@ export class Grid {
     header.appendChild(browse);
   }
 
-  private renderTrackFader(voice: number): void {
+  private renderTrackLevel(voice: number): void {
     const fader = document.createElement("input");
     fader.type = "range";
     fader.min = "0";
@@ -127,7 +105,29 @@ export class Grid {
     fader.value = String(this.resound.track_level(voice));
     fader.className = "row-fader";
     fader.dataset.voice = String(voice);
+    fader.title = "Level";
     this.root.appendChild(fader);
+  }
+
+  private renderTrackTuning(voice: number): void {
+    const wrap = document.createElement("div");
+    wrap.className = "row-tuner-wrap";
+    const tuner = document.createElement("input");
+    tuner.type = "range";
+    tuner.min = "-12";
+    tuner.max = "12";
+    tuner.step = "1";
+    tuner.value = String(this.resound.track_tuning(voice));
+    tuner.className = "row-tuner";
+    tuner.dataset.voice = String(voice);
+    tuner.title = "Tuning (semitones, ±1 octave)";
+    wrap.appendChild(tuner);
+    const readout = document.createElement("span");
+    readout.className = "row-tuner-readout";
+    readout.dataset.voice = String(voice);
+    readout.textContent = formatSemis(this.resound.track_tuning(voice));
+    wrap.appendChild(readout);
+    this.root.appendChild(wrap);
   }
 
   private renderCell(voice: number, step: number): void {
@@ -136,97 +136,13 @@ export class Grid {
     cell.className = "cell" + (step % 4 === 0 && step > 0 ? " beat-start" : "");
     cell.dataset.voice = String(voice);
     cell.dataset.step = String(step);
-
-    const fill = document.createElement("span");
-    fill.className = "cell-fill";
-    cell.appendChild(fill);
-
-    const pitchBadge = document.createElement("span");
-    pitchBadge.className = "cell-pitch";
-    cell.appendChild(pitchBadge);
-
-    applyCellState(cell, this.resound, voice, step, false);
-    this.attachCellHandlers(cell, voice, step);
-    this.root.appendChild(cell);
-  }
-
-  private attachCellHandlers(cell: HTMLButtonElement, voice: number, step: number): void {
-    let downAt: { x: number; y: number; time: number } | null = null;
-    let drag: { axis: "velocity" | "pitch"; startVel: number; startPitch: number } | null = null;
-    let undoBegun = false;
-    let pointerId = -1;
-
-    const beginUndo = (): void => {
-      if (!undoBegun) {
-        this.undo.beginGesture();
-        undoBegun = true;
-      }
-    };
-
-    cell.addEventListener("pointerdown", (ev) => {
-      pointerId = ev.pointerId;
-      cell.setPointerCapture(pointerId);
-      downAt = { x: ev.clientX, y: ev.clientY, time: performance.now() };
-      drag = null;
-      undoBegun = false;
-    });
-
-    cell.addEventListener("pointermove", (ev) => {
-      if (!downAt) return;
-      const dx = ev.clientX - downAt.x;
-      const dy = ev.clientY - downAt.y;
-      if (!drag) {
-        if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
-        if (!this.resound.is_step_on(voice, step)) {
-          downAt = null;
-          return;
-        }
-        drag = {
-          axis: ev.shiftKey ? "pitch" : "velocity",
-          startVel: this.resound.step_velocity(voice, step),
-          startPitch: this.resound.step_pitch(voice, step),
-        };
-        beginUndo();
-      }
-      if (drag.axis === "velocity") {
-        const delta = -dy / VELOCITY_DRAG_RANGE;
-        this.resound.set_step_velocity(voice, step, drag.startVel + delta);
-      } else {
-        const delta = -dy / PITCH_DRAG_RANGE;
-        this.resound.set_step_pitch(voice, step, drag.startPitch + delta);
-      }
-      this.refreshCell(voice, step);
-    });
-
-    const finish = (): void => {
-      if (pointerId >= 0) {
-        try {
-          cell.releasePointerCapture(pointerId);
-        } catch {
-          // pointer already released
-        }
-        pointerId = -1;
-      }
-      if (!downAt) return;
-      const wasDrag = drag !== null;
-      downAt = null;
-      drag = null;
-      if (wasDrag) {
-        if (undoBegun) this.undo.endGesture();
-        return;
-      }
+    if (this.resound.is_step_on(voice, step)) cell.classList.add("on");
+    cell.addEventListener("click", () => {
       this.resound.toggle_step(voice, step);
       this.undo.commit();
       this.refreshCell(voice, step);
-      if (this.resound.is_step_on(voice, step)) {
-        this.setSelection({ voice, step });
-      } else if (sameSelection(this.selected, { voice, step })) {
-        this.setSelection(null);
-      }
-    };
-
-    cell.addEventListener("pointerup", finish);
-    cell.addEventListener("pointercancel", finish);
+    });
+    this.root.appendChild(cell);
   }
 
   private beginInlineRename(voice: number, nameSpan: HTMLElement): void {
@@ -265,41 +181,7 @@ export class Grid {
   }
 }
 
-function applyCellState(
-  cell: HTMLElement,
-  resound: Resound,
-  voice: number,
-  step: number,
-  selected: boolean,
-): void {
-  const on = resound.is_step_on(voice, step);
-  cell.classList.toggle("on", on);
-  cell.classList.toggle("selected", selected);
-
-  const fill = cell.querySelector<HTMLElement>(".cell-fill");
-  if (fill) {
-    if (on) {
-      const velocity = resound.step_velocity(voice, step);
-      fill.style.height = `${Math.max(8, velocity * 100)}%`;
-    } else {
-      fill.style.height = "0";
-    }
-  }
-
-  const badge = cell.querySelector<HTMLElement>(".cell-pitch");
-  if (badge) {
-    if (on) {
-      const p = resound.step_pitch(voice, step);
-      const rounded = Math.round(p);
-      badge.textContent = rounded === 0 ? "" : rounded > 0 ? `+${rounded}` : String(rounded);
-    } else {
-      badge.textContent = "";
-    }
-  }
-}
-
-export function sameSelection(a: SelectedStep, b: SelectedStep): boolean {
-  if (!a && !b) return true;
-  if (!a || !b) return false;
-  return a.voice === b.voice && a.step === b.step;
+function formatSemis(s: number): string {
+  if (s === 0) return "0";
+  return s > 0 ? `+${s}` : String(s);
 }

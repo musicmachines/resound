@@ -17,19 +17,18 @@ export function wireClearReset(
   undo: UndoStack,
   refs: ClearResetRefs,
 ): void {
-  const refreshAllUiFromState = (): void => {
+  const refreshAll = (): void => {
     for (let v = 0; v < 8; v++) {
       grid.refreshTrackHeader(v);
-      grid.refreshTrackFader(v);
+      grid.refreshTrackLevel(v);
+      grid.refreshTrackTuning(v);
     }
     grid.refreshAllCells();
-    grid.setSelection(null);
   };
 
   refs.clearPatternBtn.addEventListener("click", () => {
     resound.clear_pattern();
     undo.commit();
-    grid.setSelection(null);
     grid.refreshAllCells();
   });
 
@@ -39,7 +38,7 @@ export function wireClearReset(
     scheduler.stop();
     resound.reset_all();
     undo.commit();
-    refreshAllUiFromState();
+    refreshAll();
   });
 
   const refreshButtons = (): void => {
@@ -50,10 +49,10 @@ export function wireClearReset(
   undo.onChange(refreshButtons);
 
   refs.undoBtn.addEventListener("click", () => {
-    if (undo.undo()) refreshAllUiFromState();
+    if (undo.undo()) refreshAll();
   });
   refs.redoBtn.addEventListener("click", () => {
-    if (undo.redo()) refreshAllUiFromState();
+    if (undo.redo()) refreshAll();
   });
 
   document.addEventListener("keydown", (e) => {
@@ -63,13 +62,13 @@ export function wireClearReset(
     if (e.key === "z" || e.key === "Z") {
       e.preventDefault();
       if (e.shiftKey) {
-        if (undo.redo()) refreshAllUiFromState();
+        if (undo.redo()) refreshAll();
       } else {
-        if (undo.undo()) refreshAllUiFromState();
+        if (undo.undo()) refreshAll();
       }
     } else if (e.key === "y" || e.key === "Y") {
       e.preventDefault();
-      if (undo.redo()) refreshAllUiFromState();
+      if (undo.redo()) refreshAll();
     }
   });
 }

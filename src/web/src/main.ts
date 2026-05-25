@@ -4,10 +4,9 @@ import { InternalClock } from "./audio/clock";
 import { Scheduler } from "./audio/scheduler";
 import { UndoStack } from "./state/undo";
 import { Grid } from "./ui/grid";
-import { Inspector } from "./ui/inspector";
 import { SampleBrowser } from "./ui/sampleBrowser";
 import { wireTransport } from "./ui/transport";
-import { wireTrackFaders } from "./ui/mixer";
+import { wireTrackControls } from "./ui/mixer";
 import { wireClearReset } from "./ui/clearReset";
 import { attachPlayhead } from "./ui/playhead";
 
@@ -30,24 +29,20 @@ async function boot(): Promise<void> {
   const gridRoot = el<HTMLElement>("grid");
   const grid = new Grid(gridRoot, resound, undo);
   grid.render();
-  wireTrackFaders(gridRoot, resound, engine, undo);
+  wireTrackControls(gridRoot, resound, engine, undo, grid);
   attachPlayhead(gridRoot, resound);
 
   const clock = new InternalClock(resound);
   const scheduler = new Scheduler(resound, engine, clock);
-
   const browser = new SampleBrowser(resound, grid, scheduler, engine, undo);
 
   gridRoot.addEventListener("click", (ev) => {
     const t = ev.target as HTMLElement | null;
     if (!t) return;
     if (t.classList.contains("browse")) {
-      const v = Number(t.dataset.voice);
-      browser.open(v);
+      browser.open(Number(t.dataset.voice));
     }
   });
-
-  new Inspector(el<HTMLElement>("inspector"), resound, grid, undo);
 
   wireTransport(resound, scheduler, clock, engine, undo, {
     playBtn: el<HTMLButtonElement>("play"),

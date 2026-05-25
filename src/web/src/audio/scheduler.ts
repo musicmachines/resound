@@ -11,16 +11,14 @@ export class Scheduler {
     engine: AudioEngine,
     private readonly clock: ClockSource,
   ) {
-    this.voicePlayer = new VoicePlayer(engine);
+    this.voicePlayer = new VoicePlayer(engine, resound);
     this.clock.onTick(({ horizonStep, stepToAudioTime }) => {
       const events = this.resound.pull_events(horizonStep);
-      // 4 slots per event: [voice, step_global, velocity_q, pitch_q]
-      for (let i = 0; i < events.length; i += 4) {
+      // 2 slots per event: [voice, step_global]
+      for (let i = 0; i < events.length; i += 2) {
         const voice = events[i];
         const step = events[i + 1];
-        const velocity = events[i + 2] / 127;
-        const pitch = events[i + 3] / 100 - 24;
-        this.voicePlayer.trigger(voice, stepToAudioTime(step), velocity, pitch);
+        this.voicePlayer.trigger(voice, stepToAudioTime(step));
       }
     });
   }

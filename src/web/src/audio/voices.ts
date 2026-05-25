@@ -1,3 +1,4 @@
+import type { Resound } from "../../wasm/resound";
 import type { AudioEngine } from "./engine";
 
 const FADE_SECONDS = 0.003;
@@ -10,14 +11,22 @@ interface ActiveVoice {
 export class VoicePlayer {
   private active: Array<ActiveVoice | null>;
 
-  constructor(private readonly engine: AudioEngine) {
+  constructor(
+    private readonly engine: AudioEngine,
+    private readonly resound: Resound,
+  ) {
     this.active = new Array(engine.trackGains.length).fill(null);
   }
 
-  /** Trigger voice at audioTime with velocity (0..1) and pitch (semitones). */
-  trigger(voice: number, audioTime: number, velocity: number, pitchSemitones: number): void {
+  /**
+   * Trigger voice at audioTime. Per-track tuning is read from Rust at the
+   * call site; per-step velocity/pitch don't exist in v4 — gain is 1.0
+   * pre-track-fader.
+   */
+  trigger(voice: number, audioTime: number): void {
     const buffer = this.engine.voiceBuffer(voice);
     const { audioCtx, trackGains } = this.engine;
+    const tuning = this.resound.track_tuning(voice);
 
     const prior = this.active[voice];
     if (prior) {
@@ -32,28 +41,26 @@ export class VoicePlayer {
     }
 
     const fadeGain = audioCtx.createGain();
-    fadeGain.gain.value = velocity;
+    fadeGain.gain.value = 1;
     fadeGain.connect(trackGains[voice]);
 
     const source = audioCtx.createBufferSource();
     source.buffer = buffer;
-    source.playbackRate.value = Math.pow(2, pitchSemitones / 12);
+    source.playbackRate.value = Math.pow(2, tuning / 12);
     source.connect(fadeGain);
 
     const slot: ActiveVoice = { source, fadeGain };
     source.onended = () => {
       source.disconnect();
       fadeGain.disconnect();
-      if (this.active[voice] === slot) {
-        this.active[voice] = null;
-      }
+      if (this.active[voice] === slot) this.active[voice] = null;
     };
 
     source.start(audioTime);
     this.active[voice] = slot;
   }
 
-  /** Preview a pool sample at velocity 1.0 / no pitch shift, mixed via master only. */
+  /** Preview a pool sample at unity gain, no tuning. */
   previewByName(name: string, audioTime: number): void {
     const buffer = this.engine.poolBuffers.get(name);
     if (!buffer) return;

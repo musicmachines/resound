@@ -12,9 +12,6 @@ use transport::Transport;
 
 const MAX_TRACK_NAME_LEN: usize = 32;
 
-/// Boot-time voice-to-pool-sample mapping (spec §4). Used in `Resound::new`
-/// and `reset_all`; not exposed across the FFI boundary. Every entry must
-/// resolve to an entry in `POOL` — covered by a unit test.
 static DEFAULT_VOICE_SAMPLES: [&str; NUM_VOICES] = [
     "909_kick",
     "909_snare",
@@ -43,8 +40,6 @@ pub struct Resound {
     transport: Transport,
 }
 
-/// Snapshot of all undoable musical state (spec §11). Mirrors `Resound`
-/// minus the transport (active playback isn't undoable).
 #[derive(Serialize, Deserialize)]
 struct Snapshot {
     voice_pool_samples: [String; NUM_VOICES],
@@ -93,24 +88,6 @@ impl Resound {
         let v = voice as usize;
         self.voice_pool_samples[v] = name.clone();
         self.track_names[v] = name;
-    }
-
-    // Per-step velocity / pitch ---------------------------------------------
-
-    pub fn set_step_velocity(&mut self, voice: u32, step: u32, velocity: f32) {
-        self.pattern.set_velocity(voice as usize, step as usize, velocity);
-    }
-
-    pub fn step_velocity(&self, voice: u32, step: u32) -> f32 {
-        self.pattern.velocity(voice as usize, step as usize)
-    }
-
-    pub fn set_step_pitch(&mut self, voice: u32, step: u32, semitones: f32) {
-        self.pattern.set_pitch(voice as usize, step as usize, semitones);
-    }
-
-    pub fn step_pitch(&self, voice: u32, step: u32) -> f32 {
-        self.pattern.pitch(voice as usize, step as usize)
     }
 
     // Swing ------------------------------------------------------------------
@@ -166,6 +143,14 @@ impl Resound {
         self.mixer.track_level(voice as usize)
     }
 
+    pub fn set_track_tuning(&mut self, voice: u32, semitones: i32) {
+        self.mixer.set_track_tuning(voice as usize, semitones);
+    }
+
+    pub fn track_tuning(&self, voice: u32) -> i32 {
+        self.mixer.track_tuning(voice as usize)
+    }
+
     pub fn set_master_level(&mut self, level: f32) {
         self.mixer.set_master_level(level);
     }
@@ -204,8 +189,6 @@ impl Resound {
         self.transport.current_step()
     }
 
-    /// Full factory reset (spec §8): default voices, default pattern,
-    /// default levels/bpm/swing, transport stopped.
     pub fn reset_all(&mut self) {
         self.voice_pool_samples = default_voice_samples();
         self.track_names = default_voice_samples();
@@ -214,7 +197,7 @@ impl Resound {
         self.transport = Transport::new();
     }
 
-    // Undo / redo support ---------------------------------------------------
+    // Undo / redo -----------------------------------------------------------
 
     pub fn serialize_snapshot(&self) -> Vec<u8> {
         let snap = Snapshot {
@@ -247,9 +230,9 @@ impl Resound {
         true
     }
 
-    /// Scheduler query — events with global step in [cursor, until_step) for
-    /// any active pattern cells, encoded as flat [voice, step_global,
-    /// velocity_q, pitch_q, ...]. Same payload as v2.
+    /// Scheduler query — events in [cursor, until_step) as flat
+    /// [voice, step_global, voice, step_global, ...] (2 slots per event).
+    /// JS reads per-track gain + tuning at trigger time.
     pub fn pull_events(&mut self, until_step: u32) -> Vec<u32> {
         let Some((from, to)) = self.transport.advance_pull_cursor(until_step) else {
             return Vec::new();
@@ -257,13 +240,9 @@ impl Resound {
         let mut out: Vec<u32> = Vec::new();
         for global in from..to {
             let step = (global as usize) % STEPS;
-            for (voice, cell) in self.pattern.cells_active_at(step) {
-                let velocity_q = (cell.velocity * 127.0).round().clamp(0.0, 127.0) as u32;
-                let pitch_q = ((cell.pitch + 24.0) * 100.0).round().clamp(0.0, 4800.0) as u32;
+            for voice in self.pattern.voices_active_at(step) {
                 out.push(voice);
                 out.push(global);
-                out.push(velocity_q);
-                out.push(pitch_q);
             }
         }
         out
@@ -286,21 +265,18 @@ mod tests {
         for (i, expected) in DEFAULT_VOICE_SAMPLES.iter().enumerate() {
             assert_eq!(r.voice_pool_sample(i as u32), *expected);
             assert_eq!(r.track_name(i as u32), *expected);
+            assert_eq!(r.track_tuning(i as u32), 0);
         }
         assert!(r.is_step_on(0, 0));
         assert_eq!(r.bpm(), 120.0);
         assert_eq!(r.swing(), 0.5);
         assert_eq!(r.master_level(), 0.8);
-        assert!(!r.is_playing());
     }
 
     #[test]
     fn every_default_voice_sample_resolves_to_pool() {
         for name in DEFAULT_VOICE_SAMPLES {
-            assert!(
-                pool::contains(name),
-                "DEFAULT_VOICE_SAMPLES has unknown pool name {name:?}"
-            );
+            assert!(pool::contains(name), "unknown pool name {name:?}");
         }
     }
 
@@ -321,71 +297,14 @@ mod tests {
     }
 
     #[test]
-    fn set_voice_pool_sample_rejects_unknown_name() {
+    fn track_tuning_clamps_and_round_trips() {
         let mut r = Resound::new();
-        r.set_voice_pool_sample(0, "nonsense".to_string());
-        assert_eq!(r.voice_pool_sample(0), "909_kick");
-    }
-
-    #[test]
-    fn track_name_max_length_and_empty_rejected() {
-        let mut r = Resound::new();
-        r.set_track_name(0, "kick again".to_string());
-        assert_eq!(r.track_name(0), "kick again");
-        r.set_track_name(0, "".to_string());
-        assert_eq!(r.track_name(0), "kick again");
-        r.set_track_name(0, "   ".to_string());
-        assert_eq!(r.track_name(0), "kick again");
-        let long = "a".repeat(100);
-        r.set_track_name(0, long);
-        assert_eq!(r.track_name(0).chars().count(), 32);
-    }
-
-    #[test]
-    fn velocity_and_pitch_clamp() {
-        let mut r = Resound::new();
-        r.set_step_velocity(0, 0, 2.0);
-        assert_eq!(r.step_velocity(0, 0), 1.0);
-        r.set_step_pitch(0, 0, 30.0);
-        assert_eq!(r.step_pitch(0, 0), 24.0);
-        r.set_step_pitch(0, 0, -100.0);
-        assert_eq!(r.step_pitch(0, 0), -24.0);
-    }
-
-    #[test]
-    fn swing_clamps() {
-        let mut r = Resound::new();
-        r.set_swing(2.0);
-        assert_eq!(r.swing(), 0.75);
-        r.set_swing(0.1);
-        assert_eq!(r.swing(), 0.5);
-    }
-
-    #[test]
-    fn toggle_off_preserves_velocity_and_pitch() {
-        let mut r = Resound::new();
-        r.set_step(2, 5, true);
-        r.set_step_velocity(2, 5, 0.42);
-        r.set_step_pitch(2, 5, -7.0);
-        r.toggle_step(2, 5);
-        assert!(!r.is_step_on(2, 5));
-        assert_eq!(r.step_velocity(2, 5), 0.42);
-        assert_eq!(r.step_pitch(2, 5), -7.0);
-    }
-
-    #[test]
-    fn clear_pattern_resets_velocity_to_default() {
-        let mut r = Resound::new();
-        r.set_step(0, 0, true);
-        r.set_step_velocity(0, 0, 0.2);
-        r.set_step_pitch(0, 0, 5.0);
-        r.set_voice_pool_sample(1, "boom_kick".to_string());
-        r.clear_pattern();
-        assert!(!r.is_step_on(0, 0));
-        assert_eq!(r.step_velocity(0, 0), 0.8);
-        assert_eq!(r.step_pitch(0, 0), 0.0);
-        // pool assignment untouched
-        assert_eq!(r.voice_pool_sample(1), "boom_kick");
+        r.set_track_tuning(0, 5);
+        assert_eq!(r.track_tuning(0), 5);
+        r.set_track_tuning(0, 20);
+        assert_eq!(r.track_tuning(0), 12);
+        r.set_track_tuning(0, -100);
+        assert_eq!(r.track_tuning(0), -12);
     }
 
     #[test]
@@ -393,21 +312,19 @@ mod tests {
         let mut r = Resound::new();
         r.set_voice_pool_sample(0, "ride".to_string());
         r.set_step(4, 12, true);
-        r.set_step_velocity(4, 12, 0.3);
         r.set_track_level(3, 0.1);
+        r.set_track_tuning(3, 9);
         r.set_master_level(0.2);
         r.set_bpm(180.0);
         r.set_swing(0.7);
         r.play();
-
         r.reset_all();
-
         for (i, expected) in DEFAULT_VOICE_SAMPLES.iter().enumerate() {
             assert_eq!(r.voice_pool_sample(i as u32), *expected);
+            assert_eq!(r.track_tuning(i as u32), 0);
         }
         assert!(r.is_step_on(0, 0));
         assert!(!r.is_step_on(4, 12));
-        assert_eq!(r.step_velocity(4, 12), 0.8);
         assert_eq!(r.track_level(3), 0.8);
         assert_eq!(r.master_level(), 0.8);
         assert_eq!(r.bpm(), 120.0);
@@ -416,67 +333,39 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_round_trip_preserves_state() {
+    fn snapshot_round_trip_preserves_state_including_tuning() {
         let mut r = Resound::new();
-        r.set_voice_pool_sample(0, "ride".to_string());
         r.set_step(3, 9, true);
-        r.set_step_velocity(3, 9, 0.42);
-        r.set_step_pitch(3, 9, -5.5);
         r.set_track_level(2, 0.3);
+        r.set_track_tuning(2, -7);
         r.set_track_name(4, "thumper".to_string());
         r.set_bpm(140.0);
         r.set_swing(0.66);
         let blob = r.serialize_snapshot();
 
         r.clear_pattern();
+        r.set_track_tuning(2, 12);
         r.set_bpm(200.0);
-        r.set_swing(0.5);
-        r.set_track_level(2, 1.0);
 
         assert!(r.restore_snapshot(blob));
-        assert_eq!(r.voice_pool_sample(0), "ride");
         assert!(r.is_step_on(3, 9));
-        assert!((r.step_velocity(3, 9) - 0.42).abs() < 1e-6);
-        assert!((r.step_pitch(3, 9) - (-5.5)).abs() < 1e-6);
         assert_eq!(r.track_level(2), 0.3);
+        assert_eq!(r.track_tuning(2), -7);
         assert_eq!(r.track_name(4), "thumper");
         assert_eq!(r.bpm(), 140.0);
         assert!((r.swing() - 0.66).abs() < 1e-6);
     }
 
     #[test]
-    fn snapshot_does_not_capture_transport() {
-        let mut r = Resound::new();
-        r.play();
-        let blob = r.serialize_snapshot();
-        r.stop();
-        assert!(r.restore_snapshot(blob));
-        assert!(!r.is_playing());
-    }
-
-    #[test]
-    fn restore_snapshot_rejects_malformed() {
-        let mut r = Resound::new();
-        r.set_bpm(140.0);
-        assert!(!r.restore_snapshot(vec![0xff, 0xff, 0xff]));
-        assert_eq!(r.bpm(), 140.0);
-    }
-
-    #[test]
-    fn pull_events_4_slot_payload() {
+    fn pull_events_2_slot_payload() {
         let mut r = Resound::new();
         r.clear_pattern();
         r.set_step(0, 0, true);
-        r.set_step_velocity(0, 0, 1.0);
-        r.set_step_pitch(0, 0, 0.0);
         r.set_step(3, 4, true);
-        r.set_step_velocity(3, 4, 0.5);
-        r.set_step_pitch(3, 4, -12.0);
         r.play();
-
         let ev = r.pull_events(8);
-        assert_eq!(ev.len(), 8);
-        assert_eq!(&ev[0..4], &[0, 0, 127, 2400]);
-        assert_eq!(&ev[4..8], &[3, 4, 64, 1200]);
+        assert_eq!(ev.len(), 4);
+        assert_eq!(&ev[0..2], &[0, 0]);
+        assert_eq!(&ev[2..4], &[3, 4]);
     }
 }

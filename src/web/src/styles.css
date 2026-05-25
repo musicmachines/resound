@@ -5,12 +5,11 @@
   --cell: #2a2a2a;
   --cell-hover: #353535;
   --cell-on: #d97706;
-  --cell-on-fill: #f59e0b;
+  --cell-on-hover: #e88c14;
   --text: #e5e5e5;
   --muted: #909090;
   --accent: #f59e0b;
   --border: #2e2e2e;
-  --selected: #fbbf24;
   --playhead: rgba(245, 158, 11, 0.18);
   --danger: #dc2626;
 }
@@ -48,10 +47,7 @@ body {
   margin-bottom: 12px;
 }
 
-.transport-buttons {
-  display: flex;
-  gap: 8px;
-}
+.transport-buttons { display: flex; gap: 8px; }
 
 .transport-btn,
 .action-btn,
@@ -72,10 +68,7 @@ body {
   background: var(--cell-hover);
   border-color: var(--accent);
 }
-.action-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
+.action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .action-btn.danger:hover { border-color: var(--danger); }
 
 .more-btn {
@@ -92,13 +85,11 @@ body {
   font-size: 13px;
   color: var(--muted);
 }
-
 .control-label {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   font-size: 11px;
 }
-
 .control-readout {
   width: 36px;
   font-variant-numeric: tabular-nums;
@@ -139,7 +130,7 @@ body {
 .swing input[type="range"] { width: 110px; accent-color: var(--accent); }
 .master input[type="range"] { width: 140px; accent-color: var(--accent); }
 
-/* Action bar (kit + undo/clear) ========================================== */
+/* Action bar ============================================================= */
 
 .action-bar {
   display: flex;
@@ -151,41 +142,7 @@ body {
   border-radius: 8px;
   margin-bottom: 12px;
 }
-
 .action-spacer { flex: 1; }
-
-.kit-picker {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.kit-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  color: var(--muted);
-  letter-spacing: 0.05em;
-  margin-right: 4px;
-}
-.kit-btn {
-  background: var(--cell);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 5px 12px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.kit-btn:hover { background: var(--cell-hover); }
-.kit-btn.active {
-  background: var(--cell-on);
-  border-color: var(--accent);
-}
-.kit-modified {
-  font-size: 12px;
-  color: var(--muted);
-  font-style: italic;
-  margin-left: 4px;
-}
 
 /* Grid =================================================================== */
 
@@ -196,7 +153,8 @@ body {
   border-radius: 8px;
   padding: 12px;
   display: grid;
-  grid-template-columns: 160px 100px repeat(16, 1fr);
+  /* name+browse | level | tuning | 16 cells */
+  grid-template-columns: 150px 80px 96px repeat(16, 1fr);
   gap: 4px;
   align-items: center;
 }
@@ -243,7 +201,29 @@ body {
 }
 .row-icon:hover { color: var(--accent); background: var(--cell); }
 
-.row-fader { width: 100%; accent-color: var(--accent); }
+.row-fader {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.row-tuner-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.row-tuner {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+.row-tuner-readout {
+  width: 26px;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  text-align: right;
+  color: var(--muted);
+}
 
 .cell {
   position: relative;
@@ -253,37 +233,15 @@ body {
   border-radius: 3px;
   padding: 0;
   cursor: pointer;
-  overflow: hidden;
-  touch-action: none;
+  transition: background-color 80ms ease;
 }
-
 .cell:hover { background: var(--cell-hover); }
-.cell.on { border-color: var(--cell-on); }
-.cell.selected { outline: 2px solid var(--selected); outline-offset: -2px; }
-
+.cell.on {
+  background: var(--cell-on);
+  border-color: var(--accent);
+}
+.cell.on:hover { background: var(--cell-on-hover); }
 .cell.beat-start { border-left: 2px solid var(--muted); }
-
-.cell-fill {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: var(--cell-on-fill);
-  height: 0;
-  transition: height 80ms ease;
-  pointer-events: none;
-}
-
-.cell-pitch {
-  position: absolute;
-  top: 1px;
-  right: 2px;
-  font-size: 9px;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
-  text-shadow: 0 0 2px var(--bg);
-}
 
 /* Playhead =============================================================== */
 
@@ -293,55 +251,6 @@ body {
   border-radius: 3px;
   pointer-events: none;
   z-index: 1;
-}
-
-/* Inspector ============================================================== */
-
-.inspector {
-  display: grid;
-  grid-template-columns: auto 1fr auto 1fr auto auto;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 18px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-top: 12px;
-}
-.inspector[hidden] { display: none; }
-.inspector-title {
-  font-size: 13px;
-  color: var(--accent);
-  white-space: nowrap;
-}
-.inspector-group {
-  display: contents;
-}
-.inspector-group label {
-  font-size: 11px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.inspector-group input[type="range"] {
-  width: 100%;
-  min-width: 120px;
-  accent-color: var(--accent);
-}
-.inspector-value {
-  font-variant-numeric: tabular-nums;
-  font-size: 13px;
-  min-width: 36px;
-  text-align: right;
-  color: var(--text);
-}
-.inspector-close {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--muted);
-  padding: 4px 10px;
-  border-radius: 3px;
-  cursor: pointer;
 }
 
 /* Sample browser ========================================================= */
