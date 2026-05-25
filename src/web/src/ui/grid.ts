@@ -7,8 +7,8 @@ export const STEPS = 16;
 export type SelectedStep = { voice: number; step: number } | null;
 export type SelectionListener = (sel: SelectedStep) => void;
 
-const VELOCITY_DRAG_RANGE = 80; // pixels of drag = full 0..1
-const PITCH_DRAG_RANGE = 24; // pixels per semitone vertically
+const VELOCITY_DRAG_RANGE = 80; // pixels of vertical drag = full 0..1 sweep
+const PITCH_DRAG_RANGE = 24; // pixels per semitone
 
 export class Grid {
   private root: HTMLElement;
@@ -41,7 +41,6 @@ export class Grid {
     for (const l of this.listeners) l(sel);
   }
 
-  /** Initial render: build voice rows and cells. Subsequent updates use `refreshCell` / `refreshTrack`. */
   render(): void {
     this.root.innerHTML = "";
     for (let v = 0; v < NUM_VOICES; v++) {
@@ -53,14 +52,12 @@ export class Grid {
     }
   }
 
-  /** Refresh a single cell (after toggle / velocity / pitch change). */
   refreshCell(voice: number, step: number): void {
     const cell = this.cellEl(voice, step);
     if (!cell) return;
     applyCellState(cell, this.resound, voice, step, sameSelection(this.selected, { voice, step }));
   }
 
-  /** Refresh all cells (after pattern-wide changes — kit load, clear, snapshot restore). */
   refreshAllCells(): void {
     for (let v = 0; v < NUM_VOICES; v++) {
       for (let s = 0; s < STEPS; s++) {
@@ -69,14 +66,12 @@ export class Grid {
     }
   }
 
-  /** Re-render a track header — name + clear-track-sample icon visibility. */
   refreshTrackHeader(voice: number): void {
     const header = this.root.querySelector<HTMLElement>(`.row-header[data-voice="${voice}"]`);
     if (!header) return;
     this.populateTrackHeader(header, voice);
   }
 
-  /** Refresh the track-fader's value (without firing input events). */
   refreshTrackFader(voice: number): void {
     const fader = this.root.querySelector<HTMLInputElement>(`.row-fader[data-voice="${voice}"]`);
     if (fader) fader.value = String(this.resound.track_level(voice));
@@ -121,20 +116,6 @@ export class Grid {
     browse.textContent = "📁";
     browse.dataset.voice = String(voice);
     header.appendChild(browse);
-
-    const activeKit = this.resound.active_kit();
-    const kitJson = JSON.parse(this.resound.kit_json(activeKit)) as { voices: string[] };
-    const kitSample = kitJson.voices[voice];
-    if (this.resound.voice_pool_sample(voice) !== kitSample) {
-      const revert = document.createElement("button");
-      revert.type = "button";
-      revert.className = "row-icon revert";
-      revert.title = `Revert to ${kitSample} (kit sample)`;
-      revert.textContent = "⤺";
-      revert.dataset.voice = String(voice);
-      revert.dataset.action = "clear-track-sample";
-      header.appendChild(revert);
-    }
   }
 
   private renderTrackFader(voice: number): void {
@@ -195,9 +176,7 @@ export class Grid {
       const dx = ev.clientX - downAt.x;
       const dy = ev.clientY - downAt.y;
       if (!drag) {
-        // Don't start drag until movement exceeds threshold.
         if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
-        // Drag only adjusts a lit step. If cell is off, ignore drag (user is just clicking imprecisely).
         if (!this.resound.is_step_on(voice, step)) {
           downAt = null;
           return;
@@ -210,7 +189,7 @@ export class Grid {
         beginUndo();
       }
       if (drag.axis === "velocity") {
-        const delta = -dy / VELOCITY_DRAG_RANGE; // up=louder
+        const delta = -dy / VELOCITY_DRAG_RANGE;
         this.resound.set_step_velocity(voice, step, drag.startVel + delta);
       } else {
         const delta = -dy / PITCH_DRAG_RANGE;
@@ -224,7 +203,7 @@ export class Grid {
         try {
           cell.releasePointerCapture(pointerId);
         } catch {
-          // pointer might be already released
+          // pointer already released
         }
         pointerId = -1;
       }
@@ -236,7 +215,6 @@ export class Grid {
         if (undoBegun) this.undo.endGesture();
         return;
       }
-      // Click — toggle, then if newly lit, select.
       this.resound.toggle_step(voice, step);
       this.undo.commit();
       this.refreshCell(voice, step);
@@ -313,11 +291,7 @@ function applyCellState(
     if (on) {
       const p = resound.step_pitch(voice, step);
       const rounded = Math.round(p);
-      if (rounded === 0) {
-        badge.textContent = "";
-      } else {
-        badge.textContent = rounded > 0 ? `+${rounded}` : String(rounded);
-      }
+      badge.textContent = rounded === 0 ? "" : rounded > 0 ? `+${rounded}` : String(rounded);
     } else {
       badge.textContent = "";
     }

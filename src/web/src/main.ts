@@ -5,7 +5,6 @@ import { Scheduler } from "./audio/scheduler";
 import { UndoStack } from "./state/undo";
 import { Grid } from "./ui/grid";
 import { Inspector } from "./ui/inspector";
-import { KitPicker } from "./ui/kit";
 import { SampleBrowser } from "./ui/sampleBrowser";
 import { wireTransport } from "./ui/transport";
 import { wireTrackFaders } from "./ui/mixer";
@@ -34,26 +33,17 @@ async function boot(): Promise<void> {
   wireTrackFaders(gridRoot, resound, engine, undo);
   attachPlayhead(gridRoot, resound);
 
-  const kit = new KitPicker(el<HTMLElement>("kit-picker"), resound, grid, undo);
-
   const clock = new InternalClock(resound);
   const scheduler = new Scheduler(resound, engine, clock);
 
-  const browser = new SampleBrowser(resound, grid, kit, scheduler, engine, undo);
+  const browser = new SampleBrowser(resound, grid, scheduler, engine, undo);
 
-  // Per-row icon actions delegated from the grid root.
   gridRoot.addEventListener("click", (ev) => {
     const t = ev.target as HTMLElement | null;
     if (!t) return;
     if (t.classList.contains("browse")) {
       const v = Number(t.dataset.voice);
       browser.open(v);
-    } else if (t.dataset.action === "clear-track-sample") {
-      const v = Number(t.dataset.voice);
-      resound.clear_track_sample(v);
-      undo.commit();
-      grid.refreshTrackHeader(v);
-      kit.notifyChange();
     }
   });
 
@@ -70,14 +60,13 @@ async function boot(): Promise<void> {
     masterSlider: el<HTMLInputElement>("master"),
   });
 
-  // Reset All sits in the ⋮ menu; toggle visibility on click.
   const moreBtn = el<HTMLButtonElement>("more-menu");
   const resetAllBtn = el<HTMLButtonElement>("reset-all");
   moreBtn.addEventListener("click", () => {
     resetAllBtn.hidden = !resetAllBtn.hidden;
   });
 
-  wireClearReset(resound, grid, kit, scheduler, undo, {
+  wireClearReset(resound, grid, scheduler, undo, {
     clearPatternBtn: el<HTMLButtonElement>("clear-pattern"),
     resetAllBtn,
     undoBtn: el<HTMLButtonElement>("undo"),

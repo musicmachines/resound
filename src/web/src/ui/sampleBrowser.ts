@@ -1,6 +1,5 @@
 import type { Resound } from "../../wasm/resound";
 import type { Grid } from "./grid";
-import type { KitPicker } from "./kit";
 import type { Scheduler } from "../audio/scheduler";
 import type { AudioEngine } from "../audio/engine";
 import type { UndoStack } from "../state/undo";
@@ -17,7 +16,6 @@ export class SampleBrowser {
   constructor(
     private readonly resound: Resound,
     private readonly grid: Grid,
-    private readonly kit: KitPicker,
     private readonly scheduler: Scheduler,
     private readonly engine: AudioEngine,
     private readonly undo: UndoStack,
@@ -117,7 +115,6 @@ export class SampleBrowser {
     this.resound.set_voice_pool_sample(this.currentVoice, name);
     this.undo.commit();
     this.grid.refreshTrackHeader(this.currentVoice);
-    this.kit.notifyChange();
     this.close();
   }
 }

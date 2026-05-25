@@ -1,6 +1,5 @@
 import type { Resound } from "../../wasm/resound";
 import type { Grid } from "./grid";
-import type { KitPicker } from "./kit";
 import type { Scheduler } from "../audio/scheduler";
 import type { UndoStack } from "../state/undo";
 
@@ -14,11 +13,19 @@ export interface ClearResetRefs {
 export function wireClearReset(
   resound: Resound,
   grid: Grid,
-  kit: KitPicker,
   scheduler: Scheduler,
   undo: UndoStack,
   refs: ClearResetRefs,
 ): void {
+  const refreshAllUiFromState = (): void => {
+    for (let v = 0; v < 8; v++) {
+      grid.refreshTrackHeader(v);
+      grid.refreshTrackFader(v);
+    }
+    grid.refreshAllCells();
+    grid.setSelection(null);
+  };
+
   refs.clearPatternBtn.addEventListener("click", () => {
     resound.clear_pattern();
     undo.commit();
@@ -27,14 +34,12 @@ export function wireClearReset(
   });
 
   refs.resetAllBtn.addEventListener("click", () => {
-    const ok = window.confirm(
-      "Reset everything to defaults? Your pattern will be lost.",
-    );
+    const ok = window.confirm("Reset everything to defaults? Your pattern will be lost.");
     if (!ok) return;
     scheduler.stop();
     resound.reset_all();
     undo.commit();
-    kit.refreshAfterStateChange();
+    refreshAllUiFromState();
   });
 
   const refreshButtons = (): void => {
@@ -45,13 +50,12 @@ export function wireClearReset(
   undo.onChange(refreshButtons);
 
   refs.undoBtn.addEventListener("click", () => {
-    if (undo.undo()) kit.refreshAfterStateChange();
+    if (undo.undo()) refreshAllUiFromState();
   });
   refs.redoBtn.addEventListener("click", () => {
-    if (undo.redo()) kit.refreshAfterStateChange();
+    if (undo.redo()) refreshAllUiFromState();
   });
 
-  // Global keyboard shortcuts — gated against text-input focus.
   document.addEventListener("keydown", (e) => {
     if (isTypingTarget(e.target)) return;
     const mod = e.metaKey || e.ctrlKey;
@@ -59,13 +63,13 @@ export function wireClearReset(
     if (e.key === "z" || e.key === "Z") {
       e.preventDefault();
       if (e.shiftKey) {
-        if (undo.redo()) kit.refreshAfterStateChange();
+        if (undo.redo()) refreshAllUiFromState();
       } else {
-        if (undo.undo()) kit.refreshAfterStateChange();
+        if (undo.undo()) refreshAllUiFromState();
       }
     } else if (e.key === "y" || e.key === "Y") {
       e.preventDefault();
-      if (undo.redo()) kit.refreshAfterStateChange();
+      if (undo.redo()) refreshAllUiFromState();
     }
   });
 }
