@@ -178,11 +178,9 @@ body {
 /* Playhead overlay -------------------------------------------------------- */
 
 .playhead {
+  position: absolute;
   background: var(--playhead);
   border-radius: 3px;
   pointer-events: none;
-  align-self: stretch;
-  justify-self: stretch;
-  height: 100%;
-  width: 100%;
+  z-index: 1;
 }
