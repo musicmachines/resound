@@ -4,7 +4,7 @@ import type { ClockSource } from "./clock";
 import { VoicePlayer } from "./voices";
 
 export class Scheduler {
-  private readonly voicePlayer: VoicePlayer;
+  readonly voicePlayer: VoicePlayer;
 
   constructor(
     private readonly resound: Resound,
@@ -14,10 +14,13 @@ export class Scheduler {
     this.voicePlayer = new VoicePlayer(engine);
     this.clock.onTick(({ horizonStep, stepToAudioTime }) => {
       const events = this.resound.pull_events(horizonStep);
-      for (let i = 0; i < events.length; i += 2) {
+      // 4 slots per event: [voice, step_global, velocity_q, pitch_q]
+      for (let i = 0; i < events.length; i += 4) {
         const voice = events[i];
         const step = events[i + 1];
-        this.voicePlayer.trigger(voice, stepToAudioTime(step));
+        const velocity = events[i + 2] / 127;
+        const pitch = events[i + 3] / 100 - 24;
+        this.voicePlayer.trigger(voice, stepToAudioTime(step), velocity, pitch);
       }
     });
   }

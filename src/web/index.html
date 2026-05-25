@@ -19,12 +19,27 @@
           <input id="bpm" type="number" min="40" max="240" step="1" value="120" />
           <button id="bpm-up" type="button" class="step-btn" aria-label="Increase BPM">+</button>
         </label>
+        <label class="control swing">
+          <span class="control-label">Swing</span>
+          <input id="swing" type="range" min="0.5" max="0.75" step="0.01" value="0.5" />
+          <span id="swing-value" class="control-readout">50%</span>
+        </label>
         <label class="control master">
           <span class="control-label">Master</span>
           <input id="master" type="range" min="0" max="1" step="0.01" value="0.8" />
         </label>
+        <button id="more-menu" type="button" class="more-btn" aria-label="More actions">⋮</button>
       </header>
+      <div class="action-bar">
+        <div id="kit-picker" class="kit-picker"></div>
+        <div class="action-spacer"></div>
+        <button id="undo" type="button" class="action-btn" title="Undo (Cmd/Ctrl+Z)">↶ Undo</button>
+        <button id="redo" type="button" class="action-btn" title="Redo (Cmd/Ctrl+Shift+Z)">↷ Redo</button>
+        <button id="clear-pattern" type="button" class="action-btn">Clear Pat.</button>
+        <button id="reset-all" type="button" class="action-btn danger" hidden>Reset All</button>
+      </div>
       <section id="grid" class="grid" aria-label="Pattern grid"></section>
+      <section id="inspector" class="inspector" hidden></section>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

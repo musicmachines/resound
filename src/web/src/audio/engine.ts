@@ -1,12 +1,15 @@
 import type { Resound } from "../../wasm/resound";
 
-export const VOICES = 8;
+export const NUM_VOICES = 8;
 
 export interface AudioEngine {
   audioCtx: AudioContext;
   masterGain: GainNode;
   trackGains: GainNode[];
-  buffers: AudioBuffer[];
+  /** Decoded once at boot, keyed by pool sample name. Never evicted. */
+  poolBuffers: Map<string, AudioBuffer>;
+  /** Look up the buffer the given voice should play right now. */
+  voiceBuffer: (voice: number) => AudioBuffer;
 }
 
 export async function createEngine(resound: Resound): Promise<AudioEngine> {
@@ -17,20 +20,29 @@ export async function createEngine(resound: Resound): Promise<AudioEngine> {
   masterGain.connect(audioCtx.destination);
 
   const trackGains: GainNode[] = [];
-  for (let v = 0; v < VOICES; v++) {
+  for (let v = 0; v < NUM_VOICES; v++) {
     const g = audioCtx.createGain();
     g.gain.value = resound.track_level(v);
     g.connect(masterGain);
     trackGains.push(g);
   }
 
-  const sampleBytes: Uint8Array[] = [];
-  for (let i = 0; i < resound.sample_count(); i++) {
-    sampleBytes.push(resound.sample_bytes(i));
-  }
-  const buffers = await Promise.all(
-    sampleBytes.map((bytes) => audioCtx.decodeAudioData(bytes.slice().buffer)),
+  const names = resound.pool_sample_names() as unknown as string[];
+  const decoded = await Promise.all(
+    names.map(async (name) => {
+      const bytes = resound.pool_sample_bytes(name);
+      const buf = await audioCtx.decodeAudioData(bytes.slice().buffer);
+      return [name, buf] as const;
+    }),
   );
+  const poolBuffers = new Map<string, AudioBuffer>(decoded);
 
-  return { audioCtx, masterGain, trackGains, buffers };
+  const voiceBuffer = (voice: number): AudioBuffer => {
+    const name = resound.voice_pool_sample(voice);
+    const buf = poolBuffers.get(name);
+    if (!buf) throw new Error(`pool buffer not loaded for "${name}"`);
+    return buf;
+  };
+
+  return { audioCtx, masterGain, trackGains, poolBuffers, voiceBuffer };
 }

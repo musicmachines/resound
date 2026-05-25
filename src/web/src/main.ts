@@ -2,10 +2,14 @@ import init, { Resound } from "../wasm/resound";
 import { createEngine } from "./audio/engine";
 import { InternalClock } from "./audio/clock";
 import { Scheduler } from "./audio/scheduler";
-import { renderGrid, wireGridClicks } from "./ui/grid";
+import { UndoStack } from "./state/undo";
+import { Grid } from "./ui/grid";
+import { Inspector } from "./ui/inspector";
+import { KitPicker } from "./ui/kit";
+import { SampleBrowser } from "./ui/sampleBrowser";
 import { wireTransport } from "./ui/transport";
-import { wireMasterFader, wireTrackFaders } from "./ui/mixer";
-import { wireBpm } from "./ui/bpm";
+import { wireTrackFaders } from "./ui/mixer";
+import { wireClearReset } from "./ui/clearReset";
 import { attachPlayhead } from "./ui/playhead";
 
 function el<T extends HTMLElement>(id: string): T {
@@ -19,31 +23,65 @@ async function boot(): Promise<void> {
   const resound = new Resound();
   const engine = await createEngine(resound);
   console.log(
-    `[resound] decoded ${engine.buffers.length} samples; sampleRate=${engine.audioCtx.sampleRate}`,
+    `[resound] decoded ${engine.poolBuffers.size} pool samples; sampleRate=${engine.audioCtx.sampleRate}`,
   );
 
-  const grid = el<HTMLElement>("grid");
-  renderGrid(grid, resound);
-  wireGridClicks(grid, resound);
-  wireTrackFaders(grid, resound, engine);
-  attachPlayhead(grid, resound);
+  const undo = new UndoStack(resound);
+
+  const gridRoot = el<HTMLElement>("grid");
+  const grid = new Grid(gridRoot, resound, undo);
+  grid.render();
+  wireTrackFaders(gridRoot, resound, engine, undo);
+  attachPlayhead(gridRoot, resound);
+
+  const kit = new KitPicker(el<HTMLElement>("kit-picker"), resound, grid, undo);
 
   const clock = new InternalClock(resound);
   const scheduler = new Scheduler(resound, engine, clock);
 
-  wireTransport(resound, scheduler, engine.audioCtx, {
-    playBtn: el<HTMLButtonElement>("play"),
-    stopBtn: el<HTMLButtonElement>("stop"),
+  const browser = new SampleBrowser(resound, grid, kit, scheduler, engine, undo);
+
+  // Per-row icon actions delegated from the grid root.
+  gridRoot.addEventListener("click", (ev) => {
+    const t = ev.target as HTMLElement | null;
+    if (!t) return;
+    if (t.classList.contains("browse")) {
+      const v = Number(t.dataset.voice);
+      browser.open(v);
+    } else if (t.dataset.action === "clear-track-sample") {
+      const v = Number(t.dataset.voice);
+      resound.clear_track_sample(v);
+      undo.commit();
+      grid.refreshTrackHeader(v);
+      kit.notifyChange();
+    }
   });
 
-  const masterInput = el<HTMLInputElement>("master");
-  masterInput.value = String(resound.master_level());
-  wireMasterFader(masterInput, resound, engine);
+  new Inspector(el<HTMLElement>("inspector"), resound, grid, undo);
 
-  wireBpm(resound, clock, {
-    input: el<HTMLInputElement>("bpm"),
-    down: el<HTMLButtonElement>("bpm-down"),
-    up: el<HTMLButtonElement>("bpm-up"),
+  wireTransport(resound, scheduler, clock, engine, undo, {
+    playBtn: el<HTMLButtonElement>("play"),
+    stopBtn: el<HTMLButtonElement>("stop"),
+    bpmInput: el<HTMLInputElement>("bpm"),
+    bpmDownBtn: el<HTMLButtonElement>("bpm-down"),
+    bpmUpBtn: el<HTMLButtonElement>("bpm-up"),
+    swingSlider: el<HTMLInputElement>("swing"),
+    swingValue: el<HTMLElement>("swing-value"),
+    masterSlider: el<HTMLInputElement>("master"),
+  });
+
+  // Reset All sits in the ⋮ menu; toggle visibility on click.
+  const moreBtn = el<HTMLButtonElement>("more-menu");
+  const resetAllBtn = el<HTMLButtonElement>("reset-all");
+  moreBtn.addEventListener("click", () => {
+    resetAllBtn.hidden = !resetAllBtn.hidden;
+  });
+
+  wireClearReset(resound, grid, kit, scheduler, undo, {
+    clearPatternBtn: el<HTMLButtonElement>("clear-pattern"),
+    resetAllBtn,
+    undoBtn: el<HTMLButtonElement>("undo"),
+    redoBtn: el<HTMLButtonElement>("redo"),
   });
 }
 

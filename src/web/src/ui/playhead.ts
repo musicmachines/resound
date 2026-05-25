@@ -35,7 +35,6 @@ export function attachPlayhead(gridRoot: HTMLElement, resound: Resound): void {
       }
       lastStep = step;
     } else if (step >= 0) {
-      // Re-measure each frame to track window resize without a separate listener.
       positionFor(step);
     }
     requestAnimationFrame(loop);

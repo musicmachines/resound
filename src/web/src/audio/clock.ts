@@ -14,9 +14,31 @@ export interface ClockSource {
 const LOOKAHEAD_MS = 25;
 const SCHEDULE_AHEAD = 0.1;
 
-// One sixteenth note = 60 / bpm / 4 seconds.
 function stepDuration(bpm: number): number {
   return 60 / bpm / 4;
+}
+
+/**
+ * Convert a global step index to audio time given a per-pair swing factor.
+ *
+ * Swing delays every second 16th note (odd-indexed within a pair):
+ *   pairIdx       = floor(step/2)
+ *   pairStart     = startTime + pairIdx * 2 * stepDur
+ *   even-in-pair  -> pairStart
+ *   odd-in-pair   -> pairStart + 2 * stepDur * swing
+ *
+ * swing=0.5 collapses to v1's straight schedule (odd lands at pairStart+stepDur).
+ */
+export function stepToAudioTime(
+  step: number,
+  startTime: number,
+  bpm: number,
+  swing: number,
+): number {
+  const stepDur = stepDuration(bpm);
+  const pairIdx = Math.floor(step / 2);
+  const pairStart = startTime + pairIdx * 2 * stepDur;
+  return step % 2 === 1 ? pairStart + 2 * stepDur * swing : pairStart;
 }
 
 export class InternalClock implements ClockSource {
@@ -48,9 +70,12 @@ export class InternalClock implements ClockSource {
     this.audioCtx = null;
   }
 
-  // Update BPM and re-anchor transportStartTime so the next unscheduled step
-  // still lands at the audio time it would have under the old BPM. Already-
-  // scheduled events fire at their committed times per spec §9.
+  /**
+   * Update BPM and re-anchor transportStartTime so the next unscheduled step
+   * still lands at the audio time it would have under the old BPM. Identical
+   * approach to v1 — swing is independent of BPM, so this anchor logic
+   * doesn't need to know about swing.
+   */
   setBpm(newBpm: number): void {
     if (!this.audioCtx) {
       this.resound.set_bpm(newBpm);
@@ -63,20 +88,34 @@ export class InternalClock implements ClockSource {
     this.transportStartTime = nextStepOldTime - this.nextScheduledStep * newDt;
   }
 
+  /**
+   * Swing changes mid-playback: future events use the new swing via the
+   * lookahead. Already-scheduled events fire at their old times. Same trade-
+   * off as BPM changes per spec §9.
+   */
+  setSwing(newSwing: number): void {
+    this.resound.set_swing(newSwing);
+  }
+
   private tick(): void {
     if (!this.audioCtx || !this.handler) return;
     const bpm = this.resound.bpm();
+    const swing = this.resound.swing();
     const dt = stepDuration(bpm);
     const deadline = this.audioCtx.currentTime + SCHEDULE_AHEAD;
+    // Conservative horizon: the largest step whose *un-swung* start time is
+    // before the deadline, +1. Swing only shifts a step within its pair by at
+    // most `2 * stepDur * (swing - 0.5)`, well under SCHEDULE_AHEAD at any
+    // reasonable BPM, so a step at-or-near the horizon won't get pushed out
+    // past the audio time we can still hit.
     const elapsed = deadline - this.transportStartTime;
     const horizonStep = Math.max(0, Math.floor(elapsed / dt) + 1);
-
     if (horizonStep <= this.nextScheduledStep) return;
 
-    const transportStart = this.transportStartTime;
+    const start = this.transportStartTime;
     const tick: ClockTick = {
       horizonStep,
-      stepToAudioTime: (step: number) => transportStart + step * dt,
+      stepToAudioTime: (step) => stepToAudioTime(step, start, bpm, swing),
     };
     this.handler(tick);
     this.nextScheduledStep = horizonStep;

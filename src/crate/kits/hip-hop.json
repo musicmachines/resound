@@ -1,0 +1,13 @@
+{
+  "name": "Hip-Hop",
+  "voices": [
+    "boom_kick",
+    "trap_snare",
+    "snap",
+    "low_thud",
+    "high_tap",
+    "tight_hat",
+    "wide_hat",
+    "ride"
+  ]
+}
